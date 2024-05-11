@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Secure chat application for streamlined communication.">
+    <title>BRO</title>
+    <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/assets/jquery.min.js" defer></script>
+    <meta http-equiv="Content-Security-Policy" content="
+        default-src 'self';
+        script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://apis.google.com;
+        style-src 'self' 'unsafe-inline';
+        img-src 'self' data:;
+        connect-src 'self' https://*.firebaseio.com https://identitytoolkit.googleapis.com;
+        frame-src 'self' https://aspertusia-com.firebaseapp.com;
+    ">
+</head>
+<body>
+    <header>
+        <div class="info">Chat application for streamlined communication.</div>
+        <div id="user-interface">
+            <button id="google-login" class="login-button" aria-label="Login using Google account">Login with Google</button>
+            <!-- User display and logout button, initially hidden -->
+            <span id="user-name" style="display: none;"></span>
+            <button id="logout" class="logout-button" style="display: none;" aria-label="Logout of your account">Logout</button>
+        </div>
+    </header>    
+    <main>
+        <section id="user-content" class="section" style="display:none;">
+            <h2>Welcome, User!</h2>
+        </section>
+    </main>
+    <footer>
+        <p>© 2024 chanino@gmail.com. All rights reserved.</p>
+    </footer>
+    <script src="/js/config.js" type="module"></script>
+    <script src="/js/app.js" type="module"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.11.1/firebase-app.js" type="module"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.11.1/firebase-auth.js" type="module"></script>
+</body>
+</html>

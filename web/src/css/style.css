@@ -1,0 +1,93 @@
+/* Basic styling */
+body {
+    background-color: #f5f7fa;
+    color: #333333;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0;
+}
+
+.container {
+    width: 80%;
+    margin: 30px auto;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+    padding: 20px;
+    background-color: #ffffff;
+    border-radius: 8px;
+}
+
+.input-field input {
+    width: 100%;
+    padding: 10px;
+    margin: 10px 0;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    box-sizing: border-box; /* includes padding and border in width */
+}
+
+/* Header styling */
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 5%;
+    background: linear-gradient(135deg, #6d5dfc 0%, #4981ce 100%);
+    color: white;
+}
+
+.info {
+    font-size: 18px;
+    font-weight: 500;
+}
+
+/* Button styling */
+button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.login-button {
+    background-color: #48a9f8;
+    color: white;
+}
+
+.login-button:hover, .login-button:focus {
+    background-color: #1a85ff;
+    box-shadow: 0 0 0 3px rgba(26,133,255,0.5);
+    transform: translateY(-2px);
+}
+
+.logout-button {
+    background-color: #f44336;
+    color: white;
+}
+
+.logout-button:hover, .logout-button:focus {
+    background-color: #d32f2f;
+    box-shadow: 0 0 0 3px rgba(211,47,47,0.5);
+    transform: translateY(-2px);
+}
+
+#user-name {
+    padding: 8px;
+    font-size: 16px;
+    font-weight: normal;
+}
+
+/* Media query for responsiveness */
+@media (max-width: 768px) {
+    .container, header {
+        width: 95%;
+        padding: 10px;
+    }
+
+    .info, button {
+        font-size: 14px;
+    }
+}
