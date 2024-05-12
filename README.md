@@ -198,3 +198,281 @@ aws cloudformation wait stack-create-complete \
     --region "$REGION" \
     --profile "$PROFILE"
 
+
+######
+######
+
+API_EXISTS=$(aws apigateway get-rest-apis --region "$REGION" --profile "$PROFILE" | \
+    python -c "import sys, json; print(next((item for item in json.load(sys.stdin)['items'] if item['name'] == '$API_NAME'), ''))")
+
+if [ -z "$API_EXISTS" ]; then
+    echo "API does not exist. Creating API..."
+    aws apigateway create-rest-api --name "$API_NAME" \
+        --region "$REGION" \
+        --profile "$PROFILE"
+else
+    echo "API already exists. No action needed."
+fi
+
+API_ID=$(aws apigateway get-rest-apis --region "$REGION" --profile "$PROFILE" | \
+    python -c "import sys, json; print(next((item['id'] for item in json.load(sys.stdin)['items'] if item['name'] == '$API_NAME'), ''))")
+echo "API ID: $API_ID"
+
+LAMBDA_ARN=$(aws lambda list-functions --query 'Functions[?FunctionName==`$FUNCTION_NAME`].FunctionArn' \
+    --region "$REGION" \
+    --profile "$PROFILE" \
+    --output text)
+echo "Lambda ARN: $LAMBDA_ARN"
+
+aws apigateway create-authorizer --rest-api-id "$API_ID" \
+    --name "$API_NAME" \
+    --type TOKEN \
+    --authorizer-uri "arn:aws:apigateway:${REGION}:lambda:path/2015-03-31/functions/${LAMBDA_ARN}/invocations" \
+    --identity-source "method.request.header.Authorization" \
+    --region "$REGION" \
+    --profile "$PROFILE" 
+
+ROOT_ID=$(aws apigateway get-resources --rest-api-id "$API_ID" \
+    --region "$REGION" \
+    --profile "$PROFILE" \
+    | python -c "import sys, json; print(next((item['id'] for item in json.load(sys.stdin)['items'] if item['path'] == '/'), 'Root resource not found'))")
+echo $ROOT_ID
+
+aws apigateway create-resource --rest-api-id "$API_ID" \
+    --parent-id "$ROOT_ID" \
+    --path-part "message" \
+    --region "$REGION" \
+    --profile "$PROFILE"
+
+RESOURCE_ID=$(aws apigateway get-resources --rest-api-id "$API_ID" \
+     --region "$REGION" \
+     --profile "$PROFILE" \
+    | python -c "import sys, json; print(next((item['id'] for item in json.load(sys.stdin)['items'] if 'message' in item['path']), ''))")
+echo $RESOURCE_ID
+
+AUTHORIZER_ID=$(aws apigateway get-authorizers --rest-api-id "$API_ID" \
+    --region "$REGION" \
+    --profile "$PROFILE" \
+    | python -c "import sys, json; print(next((item['id'] for item in json.load(sys.stdin)['items'] if item['name'] == '$API_NAME'), ''))")
+echo $AUTHORIZER_ID
+
+aws apigateway put-method --rest-api-id "$API_ID" \
+    --resource-id "$RESOURCE_ID" \
+    --http-method "POST" \
+    --authorization-type "CUSTOM" \
+    --authorizer-id "$AUTHORIZER_ID" \
+    --region "$REGION" \
+    --profile "$PROFILE"
+
+aws sqs list-queues --profile $PROFILE --region $REGION \
+ | python -c "import sys, json; print([url for url in json.load(sys.stdin)['QueueUrls'] if '$QUEUE_NAME' in url])"
+
+
+aws iam create-role --role-name  $APIGW_ROLE \
+    --assume-role-policy-document file://./apigw-trust-policy.json \
+    --profile $PROFILE \
+    --region $REGION
+
+aws iam attach-role-policy --role-name $APIGW_ROLE \
+    --policy-arn "arn:aws:iam::aws:policy/AmazonSQSFullAccess" \
+    --profile $PROFILE \
+    --region $REGION
+
+ROLE_ARN=$(aws iam get-role --role-name "$APIGW_ROLE" \
+    --profile $PROFILE \
+    --region $REGION \
+    | python -c "import sys, json; print(json.load(sys.stdin)['Role']['Arn'])")
+echo $ROLE_ARN
+
+
+aws apigateway put-method-response --rest-api-id "$API_ID" \
+    --resource-id "$RESOURCE_ID" \
+    --http-method "POST" \
+    --status-code 200 \
+    --response-models "{\"application/json\": \"Empty\"}" \
+    --response-parameters "{\"method.response.header.Access-Control-Allow-Origin\": true}" \
+    --region "$REGION" \
+    --profile "$PROFILE"
+
+aws apigateway put-integration-response --rest-api-id "$API_ID" \
+    --resource-id "$RESOURCE_ID" \
+    --http-method "POST" \
+    --status-code 200 \
+    --response-templates "{\"application/json\": \"\"}" \
+    --response-parameters "{\"method.response.header.Access-Control-Allow-Origin\": \"'*'\"}" \
+    --region "$REGION" \
+    --profile "$PROFILE"
+
+
+aws apigateway create-deployment --rest-api-id "$API_ID" \
+    --stage-name 'prod' \
+    --region "$REGION" \
+    --profile "$PROFILE"
+
+
+aws apigateway get-stage --rest-api-id $API_ID \
+    --stage-name 'prod' \
+    --region "$REGION" \
+    --profile "$PROFILE"
+
+
+aws iam create-policy --policy-name APIGatewayCloudWatchLogsPolicy \
+    --policy-document file://cwlogs-policy.json \
+    --region $REGION \
+    --profile $PROFILE
+
+aws iam attach-role-policy --role-name ApiGatewaySQSRole \
+    --policy-arn arn:aws:iam::${ACCOUNT_ID}:policy/APIGatewayCloudWatchLogsPolicy \
+    --region $REGION \
+    --profile $PROFILE
+
+aws apigateway update-account \
+    --patch-operations op=replace,path=/cloudwatchRoleArn,value=arn:aws:iam::${ACCOUNT_ID}:role/ApiGatewaySQSRole \
+    --region $REGION \
+    --profile $PROFILE
+
+
+LOG_GROUP_ARN="arn:aws:logs:${REGION}:${ACCOUNT_ID}:log-group:/aws/apigateway/$API_NAME"
+echo $LOG_GROUP_ARN
+
+##### FIX THIS
+LOG='{ "requestId":"$context.requestId", "extendedRequestId":"$context.extendedRequestId","ip": "$context.identity.sourceIp", "caller":"$context.identity.caller", "user":"$context.identity.user", "requestTime":"$context.requestTime", "httpMethod":"$context.httpMethod", "resourcePath":"$context.resourcePath", "status":"$context.status", "protocol":"$context.protocol", "responseLength":"$context.responseLength" }'
+
+PATCH_OPERATIONS=$(cat <<"EOF"
+[
+  {
+    "op": "replace",
+    "path": "/accessLogSettings/destinationArn",
+    "value": "arn:aws:logs:$REGION:$ACCOUNT_ID:log-group:/aws/apigateway/ChatBroAPI"
+  },
+  {
+    "op": "replace",
+    "path": "/accessLogSettings/format",
+    "value": "${LOG}"
+  }
+]
+EOF
+)
+aws apigateway update-stage \
+    --rest-api-id $API_ID \
+    --stage-name 'prod' \
+    --patch-operations "$PATCH_OPERATIONS" \
+    --region $REGION \
+    --profile $PROFILE
+
+
+
+TOKEN='ey...'
+curl -v -X POST https://${API_ID}.execute-api.${REGION}.amazonaws.com/prod/message -H "Authorization: Bearer ${TOKEN}"
+
+
+aws iam list-attached-role-policies --role-name firebase-authenticator-stack-LambdaExecutionRole-ib0No5elDzNC \
+    --profile $PROFILE \
+    --region $REGION
+
+aws iam create-policy --policy-name LambdaExecutionPolicy --policy-document file://lambda-policy.json \
+    --profile $PROFILE \
+    --region $REGION
+
+aws iam attach-role-policy --role-name firebase-authenticator-stack-LambdaExecutionRole-ib0No5elDzNC \
+    --policy-arn arn:aws:iam::$ACCOUNT_ID:policy/LambdaExecutionPolicy \
+    --profile $PROFILE \
+    --region $REGION
+
+aws apigateway create-deployment --rest-api-id $API_ID \
+    --stage-name 'prod' \
+    --profile $PROFILE \
+    --region $REGION
+
+aws lambda add-permission \
+    --function-name "arn:aws:lambda:$REGION:$ACCOUNT_ID:function:$FUNCTION_NAME" \
+    --statement-id "apigateway-test" \
+    --action "lambda:InvokeFunction" \
+    --principal "apigateway.amazonaws.com" \
+    --source-arn "arn:aws:execute-api:$REGION:$ACCOUNT_ID:${API_ID}/*/*/*" \
+    --region $REGION \
+    --profile $PROFILE
+
+
+aws lambda remove-permission \
+    --function-name "arn:aws:lambda:$REGION:$ACCOUNT_ID:function:$FUNCTION_NAME" \
+    --statement-id "apigateway-test" \
+    --profile $PROFILE \
+    --region $REGION
+
+aws lambda add-permission \
+    --function-name "arn:aws:lambda:$REGION:$ACCOUNT_ID:function:$FUNCTION_NAME" \
+    --statement-id "ApiGatewaySpecificAccess" \
+    --action "lambda:InvokeFunction" \
+    --principal "apigateway.amazonaws.com" \
+    --source-arn "arn:aws:execute-api:$REGION:$ACCOUNT_ID:$API_ID/prod/POST/message" \
+    --profile $PROFILE \
+    --region $REGION
+
+aws lambda get-policy --function-name arn:aws:lambda:$REGION:$ACCOUNT_ID:function:$FUNCTION_NAME \
+    --profile $PROFILE \
+    --region $REGION
+
+aws apigateway get-rest-api --rest-api-id $API_ID --region $REGION --profile $PROFILE
+
+
+aws lambda remove-permission \
+    --function-name "arn:aws:lambda:$REGION:$ACCOUNT_ID:function:$FUNCTION_NAME" \
+    --statement-id "apigateway-expanded-access" \
+    --profile $PROFILE \
+    --region $REGION
+
+aws lambda add-permission \
+    --function-name arn:aws:lambda:$REGION:$ACCOUNT_ID:function:$FUNCTION_NAME \
+    --statement-id apigateway-expanded-access \
+    --action lambda:InvokeFunction \
+    --principal apigateway.amazonaws.com \
+    --source-arn "arn:aws:execute-api:$REGION:$ACCOUNT_ID:$API_ID/*/*/*" \
+    --profile $PROFILE \
+    --region $REGION
+
+aws iam create-role \
+    --role-name APIGatewayLambdaInvokerRole \
+    --assume-role-policy-document file://apigw-trust-policy.json \
+    --profile $PROFILE \
+    --region $REGION
+
+aws iam put-role-policy \
+    --role-name APIGatewayLambdaInvokerRole \
+    --policy-name InvokeLambdaPolicy \
+    --policy-document file://apigw-role-policy.json\
+    --profile $PROFILE \
+    --region $REGION
+
+
+aws apigateway update-integration \
+    --rest-api-id $API_ID \
+    --resource-id $RESOURCE_ID \
+    --http-method POST \
+    --patch-operations op='replace',path='/credentials',value='arn:aws:iam::$ACCOUNT_ID:role/APIGatewayLambdaInvokerRole' \
+    --profile $PROFILE \
+    --region $REGION
+
+
+
+
+
+aws apigateway create-deployment --rest-api-id "$API_ID" \
+    --stage-name 'prod' \
+    --region "$REGION" \
+    --profile "$PROFILE"
+
+
+aws lambda add-permission \
+    --function-name "arn:aws:lambda:$REGION:$ACCOUNT_ID:function:$FUNCTION_NAME" \
+    --statement-id "ApiGatewayExtendedAccess" \
+    --action "lambda:InvokeFunction" \
+    --principal "apigateway.amazonaws.com" \
+    --source-arn "arn:aws:execute-api:$REGION:$ACCOUNT_ID:$API_ID/*"
+
+
+
+aws lambda get-function --function-name $FUNCTION_NAME \
+    --profile $PROFILE \
+    --region $REGION
+
