@@ -1,0 +1,90 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Setup AWS CloudTrail with a secure S3 bucket for logging, implementing least privilege and tagging.
+
+Parameters:
+  TrailName:
+    Type: String
+    Default: MyProductionTrail
+    Description: The name of the CloudTrail trail.
+
+  BucketName:
+    Type: String
+    Default: my-cloudtrail-logs-bucket
+    Description: The name of the S3 bucket to store CloudTrail logs.
+
+  LogRetentionDays:
+    Type: Number
+    Default: 365
+    Description: Number of days to retain the logs in the S3 bucket.
+
+  EncryptionType:
+    Type: String
+    Default: AES256
+    AllowedValues:
+      - AES256
+      - aws:kms
+    Description: The server-side encryption algorithm used to secure the logs.
+
+Resources:
+  TrailLogBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Ref BucketName
+      Tags:
+        - Key: "Purpose"
+          Value: "CloudTrail Logs"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: !Ref EncryptionType
+      LifecycleConfiguration:
+        Rules:
+          - Id: LogRetention
+            Status: Enabled
+            ExpirationInDays: !Ref LogRetentionDays
+
+  TrailLogBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref TrailLogBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: "AWSCloudTrailWrite"
+            Effect: "Allow"
+            Principal:
+              Service: "cloudtrail.amazonaws.com"
+            Action: "s3:PutObject"
+            Resource: !Sub "${TrailLogBucket.Arn}/AWSLogs/${AWS::AccountId}/*"
+            Condition:
+              StringEquals:
+                s3:x-amz-acl: "bucket-owner-full-control"
+              Bool:
+                aws:SecureTransport: "true"
+          - Sid: "AWSCloudTrailRead"
+            Effect: "Allow"
+            Principal:
+              Service: "cloudtrail.amazonaws.com"
+            Action: "s3:GetBucketAcl"
+            Resource: !GetAtt TrailLogBucket.Arn
+
+  MyCloudTrail:
+    Type: 'AWS::CloudTrail::Trail'
+    Properties:
+      TrailName: !Ref TrailName
+      S3BucketName: !Ref TrailLogBucket
+      IsMultiRegionTrail: true
+      IncludeGlobalServiceEvents: true
+      IsLogging: true
+      EnableLogFileValidation: true
+      Tags:
+        - Key: "Purpose"
+          Value: "Security Monitoring"
+
+Outputs:
+  TrailName:
+    Value: !Ref MyCloudTrail
+    Description: "Name of the CloudTrail"
+  S3BucketName:
+    Value: !Ref TrailLogBucket
+    Description: "S3 bucket for CloudTrail logs"

@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Deploy Firebase Auth Lambda function.
+Resources:
+  FirebaseAuthLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: lambda_function.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: python3.9
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          FIREBASE_PROJECT_ID: !Ref FIREBASEPROJECTID
+          FIREBASE_PRIVATE_KEY_ID: !Ref FIREBASEPRIVATEKEYID
+          FIREBASE_PRIVATE_KEY: !Ref FIREBASEPRIVATEKEY
+          FIREBASE_CLIENT_EMAIL: !Ref FIREBASECLIENTEMAIL
+          FIREBASE_CLIENT_ID: !Ref FIREBASECLIENTID
+          FIREBASE_AUTH_URI: !Ref FIREBASEAUTHURI
+          FIREBASE_TOKEN_URI: !Ref FIREBASETOKENURI
+          FIREBASE_AUTH_PROVIDER_X509_CERT_URL: !Ref FIREBASEAUTHPROVIDERX509CERTURL
+          FIREBASE_CLIENT_X509_CERT_URL: !Ref FIREBASECLIENTX509CERTURL
+          FIREBASE_UNIVERSE_DOMAIN: !Ref FIREBASEUNIVERSEDOMAIN
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: "LambdaExecutionPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: "arn:aws:logs:*:*:*"
+              - Effect: "Allow"
+                Action: "sts:AssumeRole"
+                Resource: "*"
+Parameters:
+  LambdaCodeS3Bucket:
+    Type: String
+    Description: Name of the S3 bucket where the Lambda deployment package is stored.
+  LambdaCodeS3Key:
+    Type: String
+    Description: S3 key for the Lambda deployment package zip file.
+  FIREBASEPROJECTID:
+    Type: String
+    Description: Firebase Project ID
+  FIREBASEPRIVATEKEYID:
+    Type: String
+    Description: Firebase Private Key ID
+  FIREBASEPRIVATEKEY:
+    Type: String
+    Description: Firebase Private Key
+    NoEcho: true  # Use NoEcho to hide the parameter value
+  FIREBASECLIENTEMAIL:
+    Type: String
+    Description: Firebase Client Email
+  FIREBASECLIENTID:
+    Type: String
+    Description: Firebase Client ID
+  FIREBASEAUTHURI:
+    Type: String
+    Description: Firebase Auth URI
+  FIREBASETOKENURI:
+    Type: String
+    Description: Firebase Token URI
+  FIREBASEAUTHPROVIDERX509CERTURL:
+    Type: String
+    Description: Firebase Auth Provider X509 Cert URL
+  FIREBASECLIENTX509CERTURL:
+    Type: String
+    Description: Firebase Client X509 Cert URL
+  FIREBASEUNIVERSEDOMAIN:
+    Type: String
+    Description: Firebase Universe Domain
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Firebase Configuration"
+        Parameters:
+          - LambdaCodeS3Bucket
+          - LambdaCodeS3Key         
+          - FIREBASEPROJECTID
+          - FIREBASEPRIVATEKEYID
+          - FIREBASEPRIVATEKEY
+          - FIREBASECLIENTEMAIL
+          - FIREBASECLIENTID
+          - FIREBASEAUTHURI
+          - FIREBASETOKENURI
+          - FIREBASEAUTHPROVIDERX509CERTURL
+          - FIREBASECLIENTX509CERTURL
+          - FIREBASEUNIVERSEDOMAIN
+Outputs:
+  LambdaFunctionArn:
+    Description: "ARN of the Firebase Auth Lambda function"
+    Value: !GetAtt FirebaseAuthLambda.Arn

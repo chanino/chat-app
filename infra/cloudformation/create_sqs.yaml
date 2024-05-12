@@ -1,0 +1,88 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AWS SQS Queue setup with encryption, logging, and a dead-letter queue, configurable via parameters.'
+
+Parameters:
+  MainQueueName:
+    Type: String
+    Default: 'MyProductionReadyQueue'
+    Description: 'Name of the main SQS queue.'
+
+  DLQName:
+    Type: String
+    Default: 'MyDLQ'
+    Description: 'Name of the Dead Letter Queue (DLQ).'
+
+  MessageRetentionPeriod:
+    Type: Number
+    Default: 1209600
+    MinValue: 60
+    MaxValue: 1209600
+    Description: 'The length of time, in seconds, for which Amazon SQS retains a message.'
+
+  VisibilityTimeout:
+    Type: Number
+    Default: 30
+    MinValue: 0
+    MaxValue: 43200
+    Description: 'The visibility timeout for the queue in seconds.'
+
+  UseCustomKMSKey:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: 'Set to true to use a custom KMS key for encryption, false to use the default AWS-managed key.'
+
+  CustomKMSKeyArn:
+    Type: String
+    Default: ''
+    Description: 'ARN of the custom KMS key to use for encryption if UseCustomKMSKey is true.'
+
+Conditions:
+  UseCustomKeyCond: !Equals [!Ref UseCustomKMSKey, 'true']
+
+Resources:
+  MyQueue:
+    Type: 'AWS::SQS::Queue'
+    Properties:
+      QueueName: !Ref MainQueueName
+      KmsMasterKeyId: !If [UseCustomKeyCond, !Ref CustomKMSKeyArn, 'alias/aws/sqs']
+      MessageRetentionPeriod: !Ref MessageRetentionPeriod
+      VisibilityTimeout: !Ref VisibilityTimeout
+
+  MyDeadLetterQueue:
+    Type: 'AWS::SQS::Queue'
+    Properties:
+      QueueName: !Ref DLQName
+      MessageRetentionPeriod: !Ref MessageRetentionPeriod
+
+  MyQueuePolicy:
+    Type: 'AWS::SQS::QueuePolicy'
+    Properties:
+      Queues:
+        - !Ref MyQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action:
+              - 'sqs:SendMessage'
+              - 'sqs:ReceiveMessage'
+              - 'sqs:DeleteMessage'
+            Resource: !GetAtt 'MyQueue.Arn'
+            Condition:
+              ArnEquals:
+                'aws:SourceArn': !GetAtt 'MyQueue.Arn'
+
+Outputs:
+  QueueUrl:
+    Description: 'URL of the newly created SQS queue'
+    Value: !Ref MyQueue
+    Export:
+      Name: !Sub '${AWS::StackName}-QueueUrl'
+
+  DeadLetterQueueUrl:
+    Description: 'URL of the Dead Letter Queue'
+    Value: !Ref MyDeadLetterQueue
+    Export:
+      Name: !Sub '${AWS::StackName}-DeadLetterQueueUrl'

@@ -1,2 +1,22 @@
 *.bak
 *.env
+*.zip
+venv
+*firebase-adminsdk-*.json
+*test*.py
+
+# Secret keys and configuration files
+*.key
+*.pem
+config.yaml
+
+# Ignore directory for build outputs
+/build/
+/dist/
+
+# Dependency directories
+/node_modules/
+/vendor/
+
+# System files
+.DS_Store

@@ -14,6 +14,12 @@ $(document).ready(function() {
             $("#user-name").text(user.displayName || user.email).show();
             $("#logout").show();
             console.log('Google sign-in successful for:', user.email);
+
+            // Get the ID token and print it to the console
+            user.getIdToken().then(function(token) {
+                console.log('ID Token:', token);
+            });
+            
         }).catch((error) => {
             console.error('Google sign-in error:', error.message);
         });
