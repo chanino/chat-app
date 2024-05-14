@@ -1,0 +1,26 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": "sqs:SendMessage",
+        "Resource": "arn:aws:sqs:us-west-2:811945593738:MyReceiveURLQueue"
+      },
+      {
+        "Effect": "Allow",
+        "Action": "sqs:ReceiveMessage",
+        "Resource": "arn:aws:sqs:us-west-2:811945593738:MyReceiveURLQueue"
+      },
+      {
+        "Effect": "Allow",
+        "Action": "sqs:DeleteMessage",
+        "Resource": "arn:aws:sqs:us-west-2:811945593738:MyReceiveURLQueue"
+      },
+      {
+        "Effect": "Allow",
+        "Action": "sqs:GetQueueAttributes",
+        "Resource": "arn:aws:sqs:us-west-2:811945593738:MyReceiveURLQueue"
+      }
+    ]
+  }
+  
