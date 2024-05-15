@@ -13,10 +13,10 @@ source venv/bin/activate
 echo "Installing dependencies..."
 pip install -r requirements.txt
 
-# Clean up unnecessary files
-echo "Cleaning up..."
-find venv/lib/$PYTHON_VERSION/site-packages/ -name "*.pyc" -delete
-find venv/lib/$PYTHON_VERSION/site-packages/ -type d -name "tests" -exec rm -rf {} +
+# # Clean up unnecessary files
+# echo "Cleaning up..."
+# find venv/lib/$PYTHON_VERSION/site-packages/ -name "*.pyc" -delete
+# find venv/lib/$PYTHON_VERSION/site-packages/ -type d -name "tests" -exec rm -rf {} +
 
 # Prepare the deployment package
 current_dir=$(pwd)
