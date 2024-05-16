@@ -60,8 +60,9 @@ $(document).ready(function() {
             headers: {
                 'Authorization': `Bearer ${userToken}`
             },
-            data: JSON.stringify({ url: url }),
-            contentType: 'application/json',
+            data: JSON.stringify({ 
+                body: JSON.stringify({ message: url })
+            }),
             success: function(response) {
                 console.log('URL submitted successfully:', response);
                 alert('URL submitted successfully!');
