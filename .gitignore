@@ -10,6 +10,7 @@ __pycache__/
 # Ignore package directories
 package/
 layer/
+lambda_package/
 
 # Secret keys and configuration files
 *.key
