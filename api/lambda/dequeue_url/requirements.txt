@@ -1,4 +1,2 @@
 requests
-#boto3
-#Pillow  # This is a dependency of pdf2image
-#pdf2image
+

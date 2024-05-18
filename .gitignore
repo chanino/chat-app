@@ -6,11 +6,13 @@ venv
 *firebase-adminsdk-*.json
 *test*.py
 __pycache__/
+response.json
 
 # Ignore package directories
 package/
 layer/
 lambda_package/
+
 
 # Secret keys and configuration files
 *.key
