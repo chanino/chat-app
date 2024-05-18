@@ -7,6 +7,8 @@ venv
 *test*.py
 __pycache__/
 response.json
+trust-policy.json
+your.pdf
 
 # Ignore package directories
 package/
@@ -22,6 +24,8 @@ config.yaml
 # Ignore directory for build outputs
 /build/
 /dist/
+back/
+
 
 # Dependency directories
 /node_modules/
