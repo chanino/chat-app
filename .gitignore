@@ -2,6 +2,7 @@
 *.env
 *.zip
 *.log
+*.tmp
 venv
 *firebase-adminsdk-*.json
 *test*.py
@@ -25,7 +26,6 @@ config.yaml
 /build/
 /dist/
 back/
-
 
 # Dependency directories
 /node_modules/

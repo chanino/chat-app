@@ -171,3 +171,6 @@ docker build --platform linux/arm64 -t mytest .
 
 # Run the Docker container and get a bash shell, removing the container when you exit
 docker run --rm -it --entrypoint /bin/bash mytest
+
+aws lambda get-function-configuration --function-name $FUNCTION_NAME \
+--region $REGION --profile $PROFILE

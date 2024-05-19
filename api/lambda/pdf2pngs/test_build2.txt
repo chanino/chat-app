@@ -1,0 +1,61 @@
+aws ecr get-login-password --region $REGION --profile $PROFILE \
+ | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com
+
+aws ecr create-repository --repository-name my_lambda_function --profile $PROFILE --region $REGION
+
+docker buildx build --platform linux/arm64 \
+-t ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/my_lambda_function:latest --push .
+
+
+cat > trust-policy.json << EOL
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Principal": {
+                "Service": "lambda.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+        }
+    ]
+}
+EOL
+
+aws iam create-role \
+    --role-name your-lambda-execution-role \
+    --assume-role-policy-document file://trust-policy.json \
+    --region $REGION --profile $PROFILE
+
+aws iam attach-role-policy \
+    --role-name your-lambda-execution-role \
+    --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole \
+    --region $REGION --profile $PROFILE
+
+
+aws lambda delete-function \
+    --function-name my_lambda_function \
+    --region $REGION --profile $PROFILE
+
+
+aws lambda create-function \
+    --function-name my_lambda_function \
+    --package-type Image \
+    --code ImageUri=${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/my_lambda_function:latest \
+    --role arn:aws:iam::${ACCOUNT_ID}:role/your-lambda-execution-role \
+    --architectures arm64 \
+    --region $REGION --profile $PROFILE
+
+aws lambda create-function \
+    --function-name my_lambda_function \
+    --package-type Image \
+    --code ImageUri=${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/my_lambda_function:latest \
+    --role arn:aws:iam::${ACCOUNT_ID}:role/your-lambda-execution-role \
+    --region $REGION --profile $PROFILE
+
+aws lambda update-function-code --function-name my_lambda_function \
+--image-uri ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/my_lambda_function:latest \
+--region $REGION --profile $PROFILE
+
+
+aws lambda invoke --function-name my_lambda_function --region $REGION --profile $PROFILE response.json
