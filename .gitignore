@@ -3,6 +3,8 @@
 *.zip
 *.log
 *.tmp
+*role*.json
+*policy*.json
 venv
 *firebase-adminsdk-*.json
 *test*.py
