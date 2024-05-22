@@ -1,10 +1,11 @@
 *.bak
-*.env
+*.env*
 *.zip
 *.log
 *.tmp
 *role*.json
 *policy*.json
+*.json
 venv
 *firebase-adminsdk-*.json
 *test*.py

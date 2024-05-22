@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# Load environment variables from .env2 file
+export $(grep -v '^#' .env2 | xargs)
+
+# Create a new IAM role for Batch with the required trust policy if not already created
+cat <<EOF > trust-policy.json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "batch.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+
+role_name="CustomBatchServiceRole"
+role_arn="arn:aws:iam::$ACCOUNT_ID:role/$role_name"
+
+if ! aws iam get-role --role-name "$role_name" --region "$REGION" --profile "$PROFILE" 2>/dev/null; then
+  aws iam create-role --role-name "$role_name" --assume-role-policy-document file://trust-policy.json --region "$REGION" --profile "$PROFILE"
+fi
+
+# Attach the AWSBatchServiceRole policy to the new role if not already attached
+aws iam attach-role-policy --role-name "$role_name" --policy-arn arn:aws:iam::aws:policy/service-role/AWSBatchServiceRole --region "$REGION" --profile "$PROFILE"
+
+# Attach the custom Batch policy to the new role if not already attached
+aws iam attach-role-policy --role-name "$role_name" --policy-arn arn:aws:iam::$ACCOUNT_ID:policy/BatchCustomPolicy --region "$REGION" --profile "$PROFILE"
+
+# Define the new compute environment name
+new_compute_env_name="${COMPUTE_ENV_NAME}-custom"
+
+# Create a new compute environment
+aws batch create-compute-environment --compute-environment-name "$new_compute_env_name" \
+    --type MANAGED --service-role "$role_arn" --compute-resources "type=FARGATE_SPOT,minvCpus=0,maxvCpus=4,desiredvCpus=0,subnets=subnet-0123456789abcdef0,securityGroupIds=sg-0123456789abcdef0" \
+    --region "$REGION" --profile "$PROFILE"
+
+# Clean up
+rm trust-policy.json
