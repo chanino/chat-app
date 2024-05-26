@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Details of the new job definition
-IMAGE="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${REPO_NAME}:${JOB_NAME}"
+IMAGE="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${REPO_NAME}:${BATCH_JOB_NAME}"
 COMMAND='["python3", "./batch_processor.py"]'
 ENVIRONMENT=$(cat <<EOF
 [
