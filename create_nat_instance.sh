@@ -57,16 +57,18 @@ USER_DATA=$(cat <<EOF
 echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
 sysctl -w net.ipv4.ip_forward=1
 
-# Configure iptables for NAT
-iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+# Install iptables-services
+sudo yum install iptables-services -y
 
-# Save iptables rules to persist across reboots
-yum install -y iptables-services
-service iptables save
+# Enable and start the iptables service
+sudo systemctl enable iptables
+sudo systemctl start iptables
 
-# Enable iptables service to apply rules on boot
-systemctl enable iptables
-systemctl start iptables
+# Add the NAT rule
+sudo iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+
+# Save the iptables rules
+sudo service iptables save
 
 # Update the package repository and install updates
 yum update -y
