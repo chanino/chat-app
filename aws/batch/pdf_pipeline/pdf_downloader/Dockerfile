@@ -1,6 +1,9 @@
 # Use an official Python runtime as a parent image
 FROM python:3.11
 
+# Install necessary packages
+RUN apt-get update && apt-get install -y poppler-utils
+
 # Set the working directory
 WORKDIR /app
 
