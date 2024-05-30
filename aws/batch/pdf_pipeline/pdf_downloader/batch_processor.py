@@ -3,10 +3,13 @@ import json
 import boto3
 import logging
 import re
-from pdf_downloader import clean_url, download_pdf
-from urllib.parse import urlparse, unquote
 from datetime import datetime
-from pdf2pngs import convert_pdf2pngs
+from io import BytesIO
+import requests
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
+from urllib.parse import urlparse, urlunparse, unquote
+import fitz  # PyMuPDF
 
 # Configure logging
 logger = logging.getLogger()
@@ -15,9 +18,66 @@ logger.setLevel(logging.INFO)
 s3 = boto3.client('s3')
 sqs = boto3.client('sqs')
 dynamodb = boto3.client('dynamodb')
-bucket_name = os.environ['BUCKET_NAME']
-queue_url = os.environ['QUEUE_URL']
-dynamodb_table = os.environ['DYNAMODB_TABLE']
+bucket_name = os.getenv('BUCKET_NAME')
+queue_url = os.getenv('QUEUE_URL')
+dynamodb_table = os.getenv('DYNAMODB_TABLE')
+
+# Check for required environment variables
+if not all([bucket_name, queue_url, dynamodb_table]):
+    logger.error("One or more required environment variables are missing.")
+    raise ValueError("Missing required environment variables.")
+
+# Setup requests session with retries
+session = requests.Session()
+retry = Retry(
+    total=5,
+    backoff_factor=0.3,
+    status_forcelist=(500, 502, 504),
+)
+adapter = HTTPAdapter(max_retries=retry)
+session.mount('http://', adapter)
+session.mount('https://', adapter)
+
+
+def is_valid_pdf(content):
+    return content.startswith(b'%PDF')
+
+
+def clean_url(pdf_url):
+    parsed_url = urlparse(pdf_url)
+    cleaned_url = urlunparse(parsed_url._replace(query='', fragment=''))
+    return cleaned_url
+
+
+def download_pdf(cleaned_url):
+    try:
+        if not re.match(r'^https?://.*\.pdf$', cleaned_url, re.IGNORECASE):
+            logger.info(f"Not a PDF URL: {cleaned_url}")
+            return None
+
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'}
+        response = session.get(cleaned_url, headers=headers, stream=True)
+        response.raise_for_status()
+
+        pdf_data = BytesIO()
+        for chunk in response.iter_content(chunk_size=1024):
+            pdf_data.write(chunk)
+        pdf_data.seek(0)
+
+        if not is_valid_pdf(pdf_data.read(4)):
+            logger.error(f"Downloaded content is not a valid PDF: {cleaned_url}")
+            return None
+
+        pdf_data.seek(0)
+        return pdf_data
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to download PDF: {cleaned_url}, error: {e}")
+        return None
+    except ValueError as e:
+        logger.error(f"Invalid PDF content from URL: {cleaned_url}, error: {e}")
+        return None
+
 
 def process_messages():
     list_of_s3s = []
@@ -26,7 +86,8 @@ def process_messages():
             response = sqs.receive_message(
                 QueueUrl=queue_url,
                 MaxNumberOfMessages=10,
-                WaitTimeSeconds=20
+                WaitTimeSeconds=20,
+                VisibilityTimeout=60  # Add visibility timeout to handle processing failures
             )
 
             if 'Messages' not in response:
@@ -51,7 +112,7 @@ def process_messages():
                             s3.upload_fileobj(pdf_data, bucket_name, object_name)
                             logger.info(f"PDF saved to S3: s3://{bucket_name}/{object_name}")
 
-                            list_of_s3s.append({'s3': {'bucket': {'name': bucket_name}, 'object': {'key': object_name}}})
+                            list_of_s3s.append(object_name)
 
                             # Construct S3 URI
                             s3_uri = f"s3://{bucket_name}/{object_name}"
@@ -83,61 +144,85 @@ def process_messages():
                         else:
                             logger.error(f"Failed to download or validate the PDF: {cleaned_url}")
                     except Exception as e:
-                        logger.error(f"Error processing PDF URL {cleaned_url}: {e}")
+                        logger.error(f"Error processing PDF URL {cleaned_url}: {e}", exc_info=True)
                 else:
                     logger.warning(f"Message is not a PDF URL: {message_body}")
     except Exception as e:
-        logger.error(f"Error processing message: {e}", exc_info=True)
+        logger.error(f"Error processing messages: {e}", exc_info=True)
 
     return list_of_s3s
 
-def convert_pdf2pngs(list_of_s3s):
-    logger.info(f"convert_pdf2pngs: {list_of_s3s}")
 
-    for record in list_of_s3s:
-        bucket = record['s3']['bucket']['name']
-        key = record['s3']['object']['key']
-        
+def png_process(list_of_s3s):
+    logger.info(f"png_process: {list_of_s3s}")
+
+    for key in list_of_s3s:
         if not key.lower().endswith('.pdf'):
             logger.info(f"Skipping non-PDF file: {key}")
             continue
 
         try:
             # Get object size
-            response = s3.head_object(Bucket=bucket, Key=key)
+            response = s3.head_object(Bucket=bucket_name, Key=key)
             object_size = response['ContentLength']
 
             # Check if the object is too large (e.g., > 1 GB)
             if object_size > 1024 * 1024 * 1024:
                 logger.error(f"File {key} is too large to process: {object_size} bytes")
-                continue  
-              
-            process_pdf(bucket, key)
+                continue
+
+            process_pdf(bucket_name, key)
         except s3.exceptions.NoSuchKey:
-            logger.error(f"File {key} does not exist in bucket {bucket}")
+            logger.error(f"File {key} does not exist in bucket {bucket_name}")
         except Exception as e:
-            logger.error(f"Error getting object {key} from bucket {bucket}: {e}")
+            logger.error(f"Error getting object {key} from bucket {bucket_name}: {e}")
+
+
+def convert_pdf2pngs(pdf_content, bucket, key):
+    """
+    Converts PDF content to PNG images and uploads each page to S3.
+
+    Args:
+    - pdf_content (bytes): The content of the PDF file.
+    - bucket (str): The name of the S3 bucket.
+    - key (str): The S3 key for the original PDF file.
+    """
+    logger.info("Enter convert_pdf2pngs")
+
+    # Open the PDF file with PyMuPDF
+    pdf_document = fitz.open(stream=pdf_content, filetype="pdf")
+    logger.info("PDF document opened")
+
+    metadata_entries = []
+    for i in range(len(pdf_document)):
+        page = pdf_document.load_page(i)
+        pix = page.get_pixmap()
+        image_buffer = BytesIO(pix.tobytes(output="png"))
+        png_key = f"{key.rstrip('.pdf')}/page-{i + 1}.png"
+        
+        try:
+            # Save each page as a PNG to S3
+            s3.upload_fileobj(image_buffer, bucket, png_key)
+            metadata_entries.append(f"s3://{bucket}/{png_key}")
+            logger.info(f"Uploaded page {i + 1} to S3")
+        except Exception as e:
+            logger.error(f"Error uploading page {i + 1} for PDF {key}: {e}")
+
+    return metadata_entries
+
 
 def process_pdf(bucket, key):
+    logger.info(f"process_pdf({bucket}, {key})")
     try:
         # Get the PDF file from S3
         response = s3.get_object(Bucket=bucket, Key=key)
         pdf_content = response['Body'].read()
         response['Body'].close()  # Ensure the body is closed
-        
+        logger.info("PDF downloaded from S3")
+
         # Convert PDF to images
-        png_images = convert_pdf2pngs(pdf_content)
-        metadata_entries = []
-        
-        for i, image_buffer in enumerate(png_images, start=1):
-            try:
-                # Save each page as a PNG to S3
-                png_key = f"{key.rstrip('.pdf')}/page-{i}.png"
-                s3.upload_fileobj(image_buffer, bucket, png_key)
-                image_buffer.close()  # Close the buffer after uploading
-                metadata_entries.append(f"s3://{bucket}/{png_key}")
-            except Exception as e:
-                logger.error(f"Error uploading page {i} for PDF {key}: {e}")
+        metadata_entries = convert_pdf2pngs(pdf_content, bucket, key)
+        logger.info("PDF conversion to PNG completed")
 
         # Update metadata
         current_time = datetime.utcnow().isoformat()
@@ -146,11 +231,12 @@ def process_pdf(bucket, key):
             "pages_extracted_timestamp": current_time,
             "status": "PagesExtracted"
         }
-        
+
         # Save metadata to DynamoDB
         save_metadata_to_dynamodb(key, metadata)
     except Exception as e:
-        logger.error(f"Error processing PDF {key}: {e}")
+        logger.error(f"Error processing PDF {key}: {e}", exc_info=True)
+
 
 def save_metadata_to_dynamodb(key, metadata):
     try:
@@ -169,9 +255,10 @@ def save_metadata_to_dynamodb(key, metadata):
         )
         logger.info(f"Metadata updated in DynamoDB table {dynamodb_table} for PDF {key}")
     except Exception as e:
-        logger.error(f"Error updating metadata for PDF {key}: {e}")
+        logger.error(f"Error updating metadata for PDF {key}: {e}", exc_info=True)
+
 
 if __name__ == "__main__":
     list_of_s3s = process_messages()
     if list_of_s3s:
-        convert_pdf2pngs(list_of_s3s)
+        png_process(list_of_s3s)

@@ -53,8 +53,7 @@ INSTANCE_ID=$(aws ec2 run-instances --image-id "$AMI_ID" \
     --subnet-id "$SUBNET_ID" \
     --region "$REGION" --profile "$PROFILE" \
     --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$INSTANCE_NAME}]" \
-    --block-device-mappings "DeviceName=/dev/xvda,Ebs={VolumeSize=$EBS_VOLUME_SIZE,VolumeType=gp3}" \
-    --network-interfaces "DeviceIndex=0,SubnetId=$SUBNET_ID,AssociatePublicIpAddress=false,Groups=$SECURITY_GROUP_ID" 
+    --network-interfaces "DeviceIndex=0,SubnetId=$SUBNET_ID,AssociatePublicIpAddress=false,Groups=$SECURITY_GROUP_ID" \
     --query 'Instances[0].InstanceId' --output text)
 
 echo "Launched instance ID: $INSTANCE_ID"
