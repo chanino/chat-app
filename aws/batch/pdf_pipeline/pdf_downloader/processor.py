@@ -22,13 +22,12 @@ region_name = os.getenv('AWS_REGION', 'us-west-2')
 s3 = boto3.client('s3', region_name=region_name)
 sqs = boto3.client('sqs', region_name=region_name)
 dynamodb = boto3.client('dynamodb', region_name=region_name)
+step_functions = boto3.client('stepfunctions', region_name=region_name)
 
-#bucket_name = os.getenv('BUCKET_NAME')
-bucket_name = "chat-bro-userdata"
-#queue_url = os.getenv('QUEUE_URL')
-queue_url = "https://sqs.us-west-2.amazonaws.com/811945593738/MyReceiveURLQueue"
-#dynamodb_table = os.getenv('DYNAMODB_TABLE')
-dynamodb_table = "PdfMetadataTable"
+bucket_name = os.getenv('BUCKET_NAME')
+queue_url = os.getenv('QUEUE_URL')
+dynamodb_table = os.getenv('DYNAMODB_TABLE')
+state_machine_arn = os.getenv('STATE_MACHINE_ARN')
 
 # Check for required environment variables
 if not all([bucket_name, queue_url, dynamodb_table]):
@@ -233,18 +232,21 @@ def process_pdf(bucket, key):
 
         # Save metadata to DynamoDB
         save_metadata_to_dynamodb(key, metadata)
+        return metadata_entries
+    
     except Exception as e:
         logger.error(f"Error processing PDF {key}: {e}", exc_info=True)
 
 
-# def trigger_step_functions(png_files):
-#     step_functions = boto3.client('stepfunctions')
-#     state_machine_arn = os.getenv('STATE_MACHINE_ARN')
-#     response = step_functions.start_execution(
-#         stateMachineArn=state_machine_arn,
-#         input=json.dumps({'png_files': png_files})
-#     )
-#     logger.info(f"Step Functions state machine triggered: {response['executionArn']}")
+def trigger_step_functions(png_files):
+    try:
+        response = step_functions.start_execution(
+            stateMachineArn=state_machine_arn,
+            input=json.dumps({'pngFiles': png_files})
+        )
+        logger.info(f"Step Functions state machine triggered: {response['executionArn']}")
+    except Exception as e:
+        logger.error(f"Error triggering Step Functions: {e}", exc_info=True)
 
 
 def save_metadata_to_dynamodb(key, metadata):
@@ -271,4 +273,5 @@ if __name__ == "__main__":
     list_of_s3s = process_messages()
     if list_of_s3s:
         list_of_pngs = png_process(list_of_s3s)
-
+        if list_of_pngs:
+            trigger_step_functions(list_of_pngs)
