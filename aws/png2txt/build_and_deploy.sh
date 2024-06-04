@@ -123,6 +123,6 @@ rm s3_policy.json cloudwatch_policy.json
 {
   "currentIndex": 0,
   "pngFiles": [
-    "s3://chat-bro-userdata/docs_aws_amazon_com/web-application-hosting-best-practices/web-application-hosting-best-practices/page-1.png"
+    "s3://${S3_BUCKET_NAME}/docs_aws_amazon_com/web-application-hosting-best-practices/web-application-hosting-best-practices/page-1.png"
   ]
 }

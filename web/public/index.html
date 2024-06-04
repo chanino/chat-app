@@ -8,6 +8,11 @@
     <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
     <link rel="stylesheet" href="/css/style.css">
     <script src="/js/assets/jquery.min.js" defer></script>
+    
+    <!-- https://cdnjs.com/libraries/aws-sdk -->
+    <script src="/js/assets/aws-sdk.min.js" defer></script>
+    <!-- https://cdnjs.cloudflare.com/ajax/libs/aws-amplify/4.3.46/aws-amplify.min.js -->
+    <script src="/js/assets/aws-amplify.min.js" defer></script>
     <meta http-equiv="Content-Security-Policy" content="
         default-src 'self';
         script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://apis.google.com;
@@ -35,6 +40,19 @@
                 <input type="text" id="url-input" name="url-input" required>
                 <button type="submit">Submit</button>
             </form>
+            <div id="pdf-viewer" style="display: none;">
+                <h3 id="pdf-title">Reviewing: web-application-hosting-best-practices</h3>
+                <div id="viewer">
+                    <div id="image-container">
+                        <img id="page-image" src="" alt="PDF Page">
+                    </div>
+                    <div id="text-container">
+                        <pre id="page-text"></pre>
+                    </div>
+                </div>
+                <button id="prev-page">Previous</button>
+                <button id="next-page">Next</button>
+            </div>
         </section>
     </main>
     <footer>
