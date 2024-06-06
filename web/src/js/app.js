@@ -1,27 +1,14 @@
 import { signInWithPopup, signOut } from 'https://www.gstatic.com/firebasejs/10.11.1/firebase-auth.js';
-import { auth, provider } from './config.js';
+import { auth, provider, awsconfig } from './config.js';
+
 
 $(document).ready(function() {
     let userToken = null;
     let currentPage = 1;
     const pdfPrefix = 'docs_aws_amazon_com/web-application-hosting-best-practices/web-application-hosting-best-practices/';
 
-    // Configure AWS Amplify
-    AWSAmplify.default.configure({
-        Auth: {
-            identityPoolId: 'YOUR_IDENTITY_POOL_ID', // Replace with your Cognito Identity Pool ID
-            region: 'us-west-2', // Replace with your region
-            userPoolId: 'YOUR_USER_POOL_ID', // Replace with your Cognito User Pool ID
-            userPoolWebClientId: 'YOUR_USER_POOL_CLIENT_ID', // Replace with your Cognito User Pool Client ID
-        },
-        Storage: {
-            AWSS3: {
-                bucket: 'chat-bro-userdata', // Replace with your S3 bucket name
-                region: 'us-west-2', // Replace with your region
-            }
-        }
-    });
-
+    window.Amplify.configure(awsconfig);
+    
     // Google login event
     $("#google-login").click(function() {
         signInWithPopup(auth, provider)
@@ -37,21 +24,13 @@ $(document).ready(function() {
                 // Get the ID token of the logged-in user
                 user.getIdToken().then(function(token) {
                     userToken = token;
-                    console.log(token);
-                    // Authenticate with Cognito
-                    AWS.config.credentials = new AWS.CognitoIdentityCredentials({
-                        IdentityPoolId: 'YOUR_IDENTITY_POOL_ID', // Replace with your Identity Pool ID
-                        Logins: {
-                            'accounts.google.com': token
-                        }
-                    });
-                    AWS.config.credentials.refresh((error) => {
-                        if (error) {
-                            console.error('Error refreshing credentials:', error);
-                        } else {
-                            console.log('Successfully authenticated with Cognito');
-                        }
-                    });
+                    // Authenticate with AWS Cognito
+                    Auth.federatedSignIn('google', { token: userToken })
+                        .then(credentials => {
+                            console.log('AWS Cognito federated sign-in successful:', credentials);
+                        }).catch(error => {
+                            console.error('Error in federated sign-in:', error);
+                        });
                 }).catch((error) => {
                     console.error('Error getting ID token:', error.message);
                 });
@@ -69,6 +48,7 @@ $(document).ready(function() {
             $("#logout").hide();
             $("#user-content").hide();
             userToken = null;
+            Auth.signOut();
             console.log('Logged out successfully');
         }).catch((error) => {
             console.error("Sign out failed:", error.message);
@@ -113,31 +93,29 @@ $(document).ready(function() {
 
     // Load a specific page of the PDF
     function loadPage() {
-        const pageImageKey = `${pdfPrefix}page-${currentPage}.png`;
-        const pageTextKey = `${pdfPrefix}page-${currentPage}.txt`;
+        const pageImageUrl = `${pdfPrefix}page-${currentPage}.png`;
+        const pageTextUrl = `${pdfPrefix}page-${currentPage}.txt`;
 
-        // Get the image from S3
-        AWSAmplify.Storage.get(pageImageKey, { level: 'public' })
+        window.Amplify.Storage.get(pageImageUrl)
             .then(result => {
                 $("#page-image").attr("src", result);
             })
             .catch(err => {
-                console.error('Error getting image from S3:', err);
-                $("#page-image").attr("src", '');
+                console.error('Error loading page image:', err);
+                $("#page-image").attr("src", "");
             });
 
-        // Get the text from S3
-        AWSAmplify.Storage.get(pageTextKey, { level: 'public', download: true })
+            window.Amplify.Storage.get(pageTextUrl, { download: true })
             .then(result => {
                 const reader = new FileReader();
-                reader.onload = (e) => {
+                reader.onload = function(e) {
                     $("#page-text").text(e.target.result);
                 };
                 reader.readAsText(result.Body);
             })
             .catch(err => {
-                console.error('Error getting text from S3:', err);
-                $("#page-text").text('Text not available.');
+                console.error('Error loading page text:', err);
+                $("#page-text").text("Text not available.");
             });
     }
 

@@ -6,6 +6,7 @@
 *role*.json
 *policy*.json
 *.json
+*config.js.template
 venv
 *firebase-adminsdk-*.json
 *test*.py
