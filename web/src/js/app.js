@@ -1,14 +1,11 @@
 import { signInWithPopup, signOut } from 'https://www.gstatic.com/firebasejs/10.11.1/firebase-auth.js';
-import { auth, provider, awsconfig } from './config.js';
-
+import { auth, provider, awsConfig } from './config.js';
 
 $(document).ready(function() {
     let userToken = null;
     let currentPage = 1;
     const pdfPrefix = 'docs_aws_amazon_com/web-application-hosting-best-practices/web-application-hosting-best-practices/';
 
-    window.Amplify.configure(awsconfig);
-    
     // Google login event
     $("#google-login").click(function() {
         signInWithPopup(auth, provider)
@@ -21,21 +18,31 @@ $(document).ready(function() {
                 $("#user-content").show();
                 console.log('Google sign-in successful for:', user.email);
 
-                // Get the ID token of the logged-in user
                 user.getIdToken().then(function(token) {
                     userToken = token;
-                    // Authenticate with AWS Cognito
-                    Auth.federatedSignIn('google', { token: userToken })
-                        .then(credentials => {
-                            console.log('AWS Cognito federated sign-in successful:', credentials);
-                        }).catch(error => {
-                            console.error('Error in federated sign-in:', error);
-                        });
+                    // Initialize the Cognito Identity credentials
+                    AWS.config.region = awsConfig.region;
+                    AWS.config.credentials = new AWS.CognitoIdentityCredentials({
+                        IdentityPoolId: awsConfig.IdentityPoolId,
+                        Logins: {
+                            'accounts.google.com': userToken
+                        }
+                    });
+
+                    AWS.config.credentials.get(function(err) {
+                        if (err) {
+                            console.error('Error getting AWS credentials:', err);
+                        } else {
+                            console.log('AWS credentials obtained:', AWS.config.credentials);
+                            // Call showPdfViewer() after successfully obtaining credentials
+                            showPdfViewer();
+                        }
+                    });
                 }).catch((error) => {
                     console.error('Error getting ID token:', error.message);
                 });
             }).catch((error) => {
-                console.error('Google sign-in error:', error.message);
+                console.error('Error signing in with Google:', error.message);
             });
     });
 
@@ -48,7 +55,7 @@ $(document).ready(function() {
             $("#logout").hide();
             $("#user-content").hide();
             userToken = null;
-            Auth.signOut();
+            AWS.config.credentials.clearCachedId();
             console.log('Logged out successfully');
         }).catch((error) => {
             console.error("Sign out failed:", error.message);
@@ -71,7 +78,7 @@ $(document).ready(function() {
             headers: {
                 'Authorization': `Bearer ${userToken}`
             },
-            data: JSON.stringify({ 
+            data: JSON.stringify({
                 body: JSON.stringify({ message: url })
             }),
             success: function(response) {
@@ -91,32 +98,37 @@ $(document).ready(function() {
         loadPage();
     }
 
-    // Load a specific page of the PDF
     function loadPage() {
         const pageImageUrl = `${pdfPrefix}page-${currentPage}.png`;
         const pageTextUrl = `${pdfPrefix}page-${currentPage}.txt`;
 
-        window.Amplify.Storage.get(pageImageUrl)
-            .then(result => {
-                $("#page-image").attr("src", result);
-            })
-            .catch(err => {
-                console.error('Error loading page image:', err);
-                $("#page-image").attr("src", "");
-            });
+        const s3 = new AWS.S3();
 
-            window.Amplify.Storage.get(pageTextUrl, { download: true })
-            .then(result => {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    $("#page-text").text(e.target.result);
-                };
-                reader.readAsText(result.Body);
-            })
-            .catch(err => {
+        s3.getObject({ Bucket: awsConfig.Bucket, Key: pageImageUrl }, function(err, data) {
+            if (err) {
+                console.error('Error loading page image:', err);
+                if (err.code === 'CredentialsError') {
+                    console.error('AWS credentials are missing. Please log in and try again.');
+                }
+                $("#page-image").attr("src", "");
+            } else {
+                const url = URL.createObjectURL(new Blob([data.Body], { type: data.ContentType }));
+                $("#page-image").attr("src", url);
+            }
+        });
+
+        s3.getObject({ Bucket: awsConfig.Bucket, Key: pageTextUrl }, function(err, data) {
+            if (err) {
                 console.error('Error loading page text:', err);
+                if (err.code === 'CredentialsError') {
+                    console.error('AWS credentials are missing. Please log in and try again.');
+                }
                 $("#page-text").text("Text not available.");
-            });
+            } else {
+                const text = new TextDecoder("utf-8").decode(data.Body);
+                $("#page-text").text(text);
+            }
+        });
     }
 
     // Handle previous page button click
@@ -132,7 +144,4 @@ $(document).ready(function() {
         currentPage++;
         loadPage();
     });
-
-    // Initially show the hardcoded PDF viewer
-    showPdfViewer();
 });
