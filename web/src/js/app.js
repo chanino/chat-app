@@ -20,12 +20,21 @@ $(document).ready(function() {
 
                 user.getIdToken().then(function(token) {
                     userToken = token;
+                    console.log('Retrieved ID token:', userToken);
+                    
+                    const decodedToken = parseJwt(userToken);
+                    console.log('Decoded Token:', decodedToken);
+
+                    // Provider name and ID token to be used for the AWS request
+                    const providerName = 'accounts.google.com';
+                    console.log('Provider Name:', providerName);
+
                     // Initialize the Cognito Identity credentials
                     AWS.config.region = awsConfig.region;
                     AWS.config.credentials = new AWS.CognitoIdentityCredentials({
                         IdentityPoolId: awsConfig.IdentityPoolId,
                         Logins: {
-                            'accounts.google.com': userToken
+                            [providerName]: userToken // Using the providerName variable
                         }
                     });
 
@@ -91,6 +100,16 @@ $(document).ready(function() {
             }
         });
     });
+
+    function parseJwt(token) {
+        var base64Url = token.split('.')[1];
+        var base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        var jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        }).join(''));
+    
+        return JSON.parse(jsonPayload);
+    }
 
     // Show PDF viewer
     function showPdfViewer() {
